@@ -1,4 +1,5 @@
 import time
+from chunk_embedding import create_embeddings_from_text
 import streamlit as st
 import fitz  # PyMuPDF
 from docx import Document
@@ -56,10 +57,8 @@ def extract_text_from_image(file):
 
 # ---- Text Processing Function ----
 @st.cache_data(show_spinner=False)
-def process_text(text):
-    cleaned = clean_text(text)
-    chunks = chunk_text(cleaned)
-    return cleaned, chunks
+def embedding_text(text):
+    return create_embeddings_from_text(text)
 
 # ---- Tabs ----
 tab1, tab2 = st.tabs(["📂 Upload Materials", "❓ Ask Questions"])
@@ -166,11 +165,11 @@ with tab1:
         if combined_text:
             st.divider()
             st.header("🧹 Text Cleaning & Chunking")
-            if st.button("🧼 create memory"):
+            if st.button("🧼 create Brain"):
                 with st.spinner("Cleaning and chunking text in background..."):
-                   cleaned, chunks = process_text(combined_text)
+                   embedded_chunks = embedding_text(combined_text)
 
-                st.success(f"✅ Cleaned text and created {len(chunks)} chunks.")
+                st.success(f"✅ Created {len(embedded_chunks)} embeddings successfully!")
 
                 # with st.expander("🧾 View Cleaned Text", expanded=False):
                 #     st.text_area("Cleaned Text", cleaned, height=300)

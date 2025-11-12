@@ -6,7 +6,7 @@ Handles text cleaning, normalization, and chunking for Docex Study Assistant.
 """
 
 import re
-from langchain.text_splitter import TokenTextSplitter
+from langchain_text_splitters import TokenTextSplitter
 
 
 # -----------------------------
