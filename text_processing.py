@@ -9,9 +9,9 @@ import re
 from langchain_text_splitters import TokenTextSplitter
 
 
-# -----------------------------
+
 # 3️⃣ TEXT CLEANING & NORMALIZATION
-# -----------------------------
+
 
 RE_PAGE = re.compile(r"--- Page \d+ ---|Page \d+ of \d+", re.IGNORECASE)
 RE_CHAPTER = re.compile(r"CHAPTER\s+\d+\s*[-:]*\s*", re.IGNORECASE)
@@ -32,9 +32,9 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 
-# -----------------------------
+
 # CHUNKING (CONTEXT SPLITTING)
-# -----------------------------
+
 
 splitter = TokenTextSplitter(
     model_name="gpt-3.5-turbo",  # your embedding model later

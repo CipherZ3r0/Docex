@@ -1,0 +1,14 @@
+python-dotenv
+langchain
+langchain-text-splitters
+langchain-google-genai
+langsmith
+streamlit
+PyMuPDF
+python-docx
+python-pptx
+Pillow
+pytesseract
+requests
+numpy
+tqdm
