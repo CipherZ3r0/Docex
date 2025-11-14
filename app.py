@@ -1,173 +1,282 @@
-from tracemalloc import start
+# import os
+# import tempfile
+# import streamlit as st
+# from dotenv import load_dotenv
+
+# load_dotenv()
+
+# from langchain_community.document_loaders import UnstructuredFileLoader
+# from langchain_text_splitters import RecursiveCharacterTextSplitter
+# from langchain_community.vectorstores import FAISS
+# from langchain_google_genai import GoogleGenerativeAIEmbeddings
+# from langchain_groq import ChatGroq
+
+# from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+# from langchain_core.prompts import ChatPromptTemplate
+# from langchain_classic.chains.retrieval import create_retrieval_chain
+
+
+# st.set_page_config(page_title="Docex: Document Explorer & Summarizer")
+# st.title("📄 Docex — Document Explorer & Summarizer")
+# st.write("Upload a file and generate an accurate summary using Groq LLM + RAG.")
+
+
+# GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+
+# uploaded_file = st.file_uploader("Upload Document", type=["pdf", "docx", "txt"])
+
+
+# def save_temp(uploaded):
+#     ext = os.path.splitext(uploaded.name)[1]
+#     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+#     tmp.write(uploaded.getbuffer())
+#     return tmp.name
+
+
+# def load_and_split(file_path, chunk_size=1200, chunk_overlap=200):
+#     loader = UnstructuredFileLoader(file_path)
+#     docs = loader.load()
+
+#     text_splitter = RecursiveCharacterTextSplitter(
+#         chunk_size=chunk_size,
+#         chunk_overlap=chunk_overlap,
+#     )
+#     return text_splitter.split_documents(docs)
+
+
+# def create_vectorstore(chunks):
+#     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+#     return FAISS.from_documents(chunks, embeddings)
+
+
+# if uploaded_file:
+#     st.info("Processing document...")
+
+#     filepath = save_temp(uploaded_file)
+
+#     try:
+#         chunks = load_and_split(filepath)
+#         st.success(f"Document split into {len(chunks)} chunks!")
+
+#         vectorstore = create_vectorstore(chunks)
+#         retriever = vectorstore.as_retriever()
+
+#         prompt = ChatPromptTemplate.from_template("""
+# You are an expert summarizer.
+
+# Use ONLY the provided context to answer.
+
+# Context:
+# {context}
+
+# Instruction:
+# {input}
+
+# Response:
+# """)
+
+#         llm = ChatGroq(
+#             api_key=GROQ_API_KEY,
+#             model="llama-3.1-8b-instant",
+#             temperature=0.1
+#         )
+
+#         combine_chain = create_stuff_documents_chain(
+#             llm=llm,
+#             prompt=prompt
+#         )
+
+#         rag_chain = create_retrieval_chain(
+#             retriever=retriever,
+#             combine_docs_chain=combine_chain
+#         )
+
+#         st.subheader("Ask anything or generate summary:")
+#         query = st.text_area(
+#             "Enter your question (or leave empty to generate a full summary)",
+#             "Provide a complete summary of this document."
+#         )
+
+#         if st.button("Generate Summary"):
+#             with st.spinner("Generating summary using RAG..."):
+#                 response = rag_chain.invoke({"input": query})
+
+#             st.success("Summary generated!")
+#             st.markdown("### 📌 Summary")
+#             st.write(response["answer"])
+
+#             with st.expander("Show retrieved context"):
+#                 for i, doc in enumerate(response["context"], 1):
+#                     st.markdown(f"*Chunk {i}:*")
+#                     st.write(doc.page_content)
+#                     st.markdown("---")
+
+#     except Exception as e:
+#         st.error(f"Error processing document: {str(e)}")
+#         st.info("Make sure you have installed: unstructured, unstructured[pdf], unstructured[docx]")
+
+# else:
+#     st.info("⬆ Upload a file to begin.")
+
+# st.caption("Docex — Powered by Groq, LangChain, Google Embeddings")
+
+
+import os
+import tempfile
 import streamlit as st
-import fitz  # PyMuPDF
-from docx import Document
-from pptx import Presentation
-from PIL import Image
-import pytesseract
-import io
-from concurrent.futures import ThreadPoolExecutor
-import time
+from dotenv import load_dotenv
 
-# Import cleaning + chunking functions from text_processing.py
-from text_processing import clean_text, chunk_text
+load_dotenv()
 
-# --- Set Tesseract path (adjust if needed) ---
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Loaders & vector tools
+from langchain_community.document_loaders import UnstructuredFileLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-# --- Page config ---
-st.set_page_config(page_title="Docex: Study Assistant", layout="wide")
-st.title("📚 Docex — Your Study Assistant")
+# LLM
+from langchain_groq import ChatGroq
 
-# ---- Text Extraction Functions ----
-def extract_text_from_pdf(file):
-    text = ""
-    file_bytes = file.read()
-    with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-        for i, page in enumerate(doc, start=1):
-            page_text = page.get_text("text")
-            if page_text.strip():
-                text += f"\n--- Page {i} ---\n{page_text}"
-            else:
-                pix = page.get_pixmap(dpi=200)
-                img = Image.open(io.BytesIO(pix.tobytes("png")))
-                ocr_text = pytesseract.image_to_string(img)
-                text += f"\n--- Page {i} (OCR) ---\n{ocr_text}"
-    return text.strip()
+# Chains
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_classic.chains.retrieval import create_retrieval_chain
 
-def extract_text_from_docx(file):
-    doc = Document(file)
-    return "\n".join([p.text for p in doc.paragraphs]).strip()
 
-def extract_text_from_pptx(file):
-    prs = Presentation(file)
-    text = ""
-    for i, slide in enumerate(prs.slides, start=1):
-        slide_text = [shape.text for shape in slide.shapes if hasattr(shape, "text")]
-        if slide_text:
-            text += f"\n--- Slide {i} ---\n" + "\n".join(slide_text)
-    return text.strip()
+# ---------------------------
+# UI SETUP
+# ---------------------------
+st.set_page_config(page_title="Docex: Multi-File Document Explorer")
+st.title("📚 Docex — Multi-File Document Explorer & Summarizer")
+st.write("Upload **multiple documents** and summarize or chat with them using RAG.")
 
-def extract_text_from_txt(file):
-    return file.read().decode("utf-8").strip()
 
-def extract_text_from_image(file):
-    img = Image.open(file)
-    return pytesseract.image_to_string(img).strip()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# ---- Text Processing Function ----
-def process_text(text):
-    """
-    Heavy text processing: cleaning + chunking
-    """
-    cleaned = clean_text(text)
-    chunks = chunk_text(cleaned)
-    return cleaned, chunks
 
-# ---- Tabs ----
-tab1, tab2 = st.tabs(["📂 Upload Materials", "❓ Ask Questions"])
+# ---------------------------
+# FILE UPLOAD
+# ---------------------------
+uploaded_files = st.file_uploader(
+    "Upload one or more documents",
+    type=[
+        "pdf", "docx", "txt", "pptx",
+        "png", "jpg", "jpeg",
+        "csv", "md", "html", "epub", "json"
+    ],
+    accept_multiple_files=True
+)
 
-# ----- Tab 1: Upload Materials -----
-with tab1:
-    st.header("Upload Your Study Materials")
-    uploaded_files = st.file_uploader(
-        "📤 Upload PDFs, DOCX, PPTX, TXT, or images:",
-        type=["pdf", "docx", "pptx", "txt", "png", "jpg", "jpeg"],
-        accept_multiple_files=True
+
+def save_temp(uploaded):
+    """Save uploaded file to a temp file & return its path"""
+    ext = os.path.splitext(uploaded.name)[1]
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+    tmp.write(uploaded.getbuffer())
+    return tmp.name
+
+
+def load_and_split(file_path, chunk_size=1200, chunk_overlap=200):
+    """Load ANY document type using Unstructured"""
+    loader = UnstructuredFileLoader(file_path)  # handles ALL types automatically
+    docs = loader.load()
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
     )
-    uploaded_text = st.text_area("Or paste your text here:", height=200)
+    return text_splitter.split_documents(docs)
 
-    all_texts = []
 
-    start_time = time.perf_counter()
+def create_vectorstore(chunks):
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+    return FAISS.from_documents(chunks, embeddings)
 
-    # --- Extract from uploaded files ---
-    if uploaded_files:
-        st.success(f"✅ {len(uploaded_files)} file(s) uploaded successfully!")
-        for file in uploaded_files:
-            st.subheader(f"📂 {file.name}")
-            try:
-                extracted_text = ""
-                if file.type == "application/pdf":
-                    file.seek(0)
-                    extracted_text = extract_text_from_pdf(file)
-                elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-                    file.seek(0)
-                    extracted_text = extract_text_from_docx(file)
-                elif file.type == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
-                    file.seek(0)
-                    extracted_text = extract_text_from_pptx(file)
-                elif file.type == "text/plain":
-                    file.seek(0)
-                    extracted_text = extract_text_from_txt(file)
-                elif file.type.startswith("image/"):
-                    file.seek(0)
-                    extracted_text = extract_text_from_image(file)
-                else:
-                    st.warning(f"⚠️ Unsupported file type: {file.type}")
-                    continue
 
-                if extracted_text:
-                    all_texts.append(f"--- {file.name} ---\n{extracted_text}")
-                    with st.expander(f"📝 View Extracted Text from {file.name}", expanded=False):
-                        st.text_area(f"Extracted Text - {file.name}", extracted_text, height=300)
-                else:
-                    st.warning(f"⚠️ No text could be extracted from {file.name}.")
+# ---------------------------
+# PROCESS MULTIPLE FILES
+# ---------------------------
+if uploaded_files:
+    st.info("Processing documents...")
 
-            except Exception as e:
-                st.error(f"❌ Error extracting text from {file.name}: {e}")
+    all_chunks = []
+    for uploaded in uploaded_files:
+        st.write(f"📄 Processing: **{uploaded.name}**")
 
-    # --- Include pasted text ---
-    if uploaded_text.strip():
-        all_texts.append(f"--- Pasted Text ---\n{uploaded_text.strip()}")
+        try:
+            path = save_temp(uploaded)
+            chunks = load_and_split(path)
 
-    # --- Combine all texts ---
-    combined_text = "\n\n".join(all_texts).strip() if all_texts else ""
+            st.success(f"✔ {uploaded.name} → {len(chunks)} chunks")
+            all_chunks.extend(chunks)
 
-    end_time = time.perf_counter()
-    elapsed_time = end_time - start_time    
-    st.write(f"⏱️ Time taken for extraction: {elapsed_time:.2f} seconds")
+        except Exception as e:
+            st.error(f"Error loading {uploaded.name}: {e}")
 
-    print(f"⏱️ Text extraction took: {elapsed_time:.4f} seconds")
-    st.info(f"⏱️ Text extraction took {elapsed_time:.2f} seconds")
+    st.success(f"🎉 Total Chunks from all files: {len(all_chunks)}")
 
-    if combined_text:
-        st.divider()
-        with st.expander("📚 View Combined Study Material", expanded=True):
-            st.subheader("📖 Combined Study Material")
-            st.text_area("All Extracted & Pasted Text", combined_text, height=400)
+    # Create vectorstore for all files
+    vectorstore = create_vectorstore(all_chunks)
+    retriever = vectorstore.as_retriever()
 
-    # --- Cleaning & Chunking ---
-    if combined_text:
-        st.divider()
-        st.header("🧹 Text Cleaning & Chunking")
-        if st.button("🧼 create memory"):
-            with st.spinner("Cleaning and chunking text in background..."):
-                with ThreadPoolExecutor() as executor:
-                    future = executor.submit(process_text, combined_text)
-                    cleaned, chunks = future.result()
+    # Prompt template
+    prompt = ChatPromptTemplate.from_template("""
+You are an expert academic summarizer and question-answering assistant.
 
-            st.success(f"✅ Cleaned text and created {len(chunks)} chunks.")
+You MUST follow these rules:
+1. Only use the information strictly provided in the context.
+2. If the answer cannot be found in the context, say: 
+   “The context does not contain this information.”
+3. Do NOT add external knowledge.
+4. Keep your answers clear, precise, and technically accurate.
+5. When summarizing: focus on key ideas, definitions, and core explanations.
+6. When answering questions: cite the exact parts of the context you rely on.
 
-            # with st.expander("🧾 View Cleaned Text", expanded=False):
-            #     st.text_area("Cleaned Text", cleaned, height=300)
+-----------------------
+Context:
+{context}
+-----------------------
 
-            # with st.expander("📦 View Text Chunks", expanded=False):
-            #     for i, chunk in enumerate(chunks, start=1):
-            #         st.markdown(f"**Chunk {i}**")
-            #         st.text_area(f"Chunk {i}", chunk, height=200)
+Instruction:
+{input}
 
-# ----- Tab 2: Ask Questions -----
-with tab2:
-    st.header("Ask Questions from Your Materials")
-    question_input = st.text_area("Type your question here:")
+Your Response:
+""")
 
-    uploaded_question_file = st.file_uploader(
-        "Or upload a question file (PDF, TXT, Image):",
-        type=["pdf", "txt", "png", "jpg", "jpeg"]
+    llm = ChatGroq(
+        api_key=GROQ_API_KEY,
+        model="llama-3.1-8b-instant",
+        temperature=0.1
     )
 
-    if st.button("Get Answer"):
-        st.info("🧠 Processing your question...")
-        answer = "This is where your answer will appear once processing is implemented."
-        st.success(answer)
+    combine_chain = create_stuff_documents_chain(llm=llm, prompt=prompt)
+    rag_chain = create_retrieval_chain(retriever=retriever, combine_docs_chain=combine_chain)
+
+    st.subheader("Ask anything about the uploaded documents:")
+    query = st.text_area(
+        "Enter your question",
+        "Give me a combined summary of all documents."
+    )
+
+    if st.button("Generate Response"):
+        with st.spinner("Thinking..."):
+            response = rag_chain.invoke({"input": query})
+
+        st.success("Done!")
+        st.markdown("### 🧾 Response")
+        st.write(response["answer"])
+
+        with st.expander("📌 Retrieved context"):
+            for i, doc in enumerate(response["context"], 1):
+                st.markdown(f"**Chunk {i}:**")
+                st.write(doc.page_content)
+                st.markdown("---")
+
+else:
+    st.info("⬆ Upload at least one file to begin.")
+
+
+st.caption("Docex — Powered by Groq, LangChain, Google Embeddings")
