@@ -11,5 +11,3 @@ langchain-groq
 faiss-cpu
 
 unstructured[all-docs]
-
-pillow

@@ -1,282 +1,236 @@
-# import os
-# import tempfile
 # import streamlit as st
-# from dotenv import load_dotenv
+# import concurrent.futures
+# import time
 
-# load_dotenv()
+# from settings import GROQ_API_KEY
+# from rag_utils import (
+#     save_temp,
+#     extract_chunks,
+#     build_vector_db,
+#     build_rag_chain
+# )
 
-# from langchain_community.document_loaders import UnstructuredFileLoader
-# from langchain_text_splitters import RecursiveCharacterTextSplitter
-# from langchain_community.vectorstores import FAISS
-# from langchain_google_genai import GoogleGenerativeAIEmbeddings
-# from langchain_groq import ChatGroq
-
-# from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-# from langchain_core.prompts import ChatPromptTemplate
-# from langchain_classic.chains.retrieval import create_retrieval_chain
-
-
-# st.set_page_config(page_title="Docex: Document Explorer & Summarizer")
-# st.title("📄 Docex — Document Explorer & Summarizer")
-# st.write("Upload a file and generate an accurate summary using Groq LLM + RAG.")
+# st.set_page_config(page_title="Docex: AI Document Brain")
+# st.title("📚 Docex — AI Document Brain Builder")
 
 
-# GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-# GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+# uploaded_files = st.file_uploader(
+#     "Upload documents (any type)",
+#     type=None,
+#     accept_multiple_files=True
+# )
 
 
-# uploaded_file = st.file_uploader("Upload Document", type=["pdf", "docx", "txt"])
+# # STEP 1: Extract
+# if uploaded_files:
+#     st.info("Extracting text from files...")
 
+#     file_paths = [save_temp(f) for f in uploaded_files]
+#     all_chunks = []
 
-# def save_temp(uploaded):
-#     ext = os.path.splitext(uploaded.name)[1]
-#     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-#     tmp.write(uploaded.getbuffer())
-#     return tmp.name
+#     with concurrent.futures.ThreadPoolExecutor() as executor:
+#         results = executor.map(extract_chunks, file_paths)
 
+#     # with st.expander("preview extracted chunks"):
+#     #     st.write(results)
 
-# def load_and_split(file_path, chunk_size=1200, chunk_overlap=200):
-#     loader = UnstructuredFileLoader(file_path)
-#     docs = loader.load()
+#     for r in results:
+#         all_chunks.extend(r)
 
-#     text_splitter = RecursiveCharacterTextSplitter(
-#         chunk_size=chunk_size,
-#         chunk_overlap=chunk_overlap,
-#     )
-#     return text_splitter.split_documents(docs)
-
-
-# def create_vectorstore(chunks):
-#     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-#     return FAISS.from_documents(chunks, embeddings)
-
-
-# if uploaded_file:
-#     st.info("Processing document...")
-
-#     filepath = save_temp(uploaded_file)
-
-#     try:
-#         chunks = load_and_split(filepath)
-#         st.success(f"Document split into {len(chunks)} chunks!")
-
-#         vectorstore = create_vectorstore(chunks)
-#         retriever = vectorstore.as_retriever()
-
-#         prompt = ChatPromptTemplate.from_template("""
-# You are an expert summarizer.
-
-# Use ONLY the provided context to answer.
-
-# Context:
-# {context}
-
-# Instruction:
-# {input}
-
-# Response:
-# """)
-
-#         llm = ChatGroq(
-#             api_key=GROQ_API_KEY,
-#             model="llama-3.1-8b-instant",
-#             temperature=0.1
-#         )
-
-#         combine_chain = create_stuff_documents_chain(
-#             llm=llm,
-#             prompt=prompt
-#         )
-
-#         rag_chain = create_retrieval_chain(
-#             retriever=retriever,
-#             combine_docs_chain=combine_chain
-#         )
-
-#         st.subheader("Ask anything or generate summary:")
-#         query = st.text_area(
-#             "Enter your question (or leave empty to generate a full summary)",
-#             "Provide a complete summary of this document."
-#         )
-
-#         if st.button("Generate Summary"):
-#             with st.spinner("Generating summary using RAG..."):
-#                 response = rag_chain.invoke({"input": query})
-
-#             st.success("Summary generated!")
-#             st.markdown("### 📌 Summary")
-#             st.write(response["answer"])
-
-#             with st.expander("Show retrieved context"):
-#                 for i, doc in enumerate(response["context"], 1):
-#                     st.markdown(f"*Chunk {i}:*")
-#                     st.write(doc.page_content)
-#                     st.markdown("---")
-
-#     except Exception as e:
-#         st.error(f"Error processing document: {str(e)}")
-#         st.info("Make sure you have installed: unstructured, unstructured[pdf], unstructured[docx]")
-
+#     st.session_state["chunks"] = all_chunks
+#     st.success(f"Extracted {len(all_chunks)} chunks.")
 # else:
-#     st.info("⬆ Upload a file to begin.")
-
-# st.caption("Docex — Powered by Groq, LangChain, Google Embeddings")
+#     st.session_state["chunks"] = None
 
 
-import os
-import tempfile
+
+# # STEP 2: Build Vector DB
+# if st.session_state["chunks"]:
+
+#     if st.button("Create Brain"):
+#         with st.spinner("Building vector database..."):
+#             vectorstore = build_vector_db(st.session_state["chunks"])
+#             st.session_state["retriever"] = vectorstore.as_retriever()
+
+#         st.success("Brain built successfully! 🎉")
+
+
+
+# # STEP 3: RAG Query
+# if "retriever" in st.session_state:
+
+#     query = st.text_area("Ask anything:", "Give me a summary")
+
+#     if st.button("Run Query"):
+#         rag = build_rag_chain(st.session_state["retriever"], GROQ_API_KEY)
+
+#         with st.spinner("Thinking..."):
+#             answer = rag.invoke({"input": query})
+
+#         st.write("### 🧠 Answer")
+#         st.write(answer["answer"])
+
+#         with st.expander("Retrieved Context"):
+#             for i, doc in enumerate(answer["context"], 1):
+#                 st.write(f"Chunk {i}:")
+#                 st.write(doc.page_content)
+#                 st.write("---")
+
+
+# # app.py (snippet)
+# import streamlit as st
+# from rag_utils import save_temp, process_files, build_vector_db, build_rag_chain, save_benchmark_logs
+# from settings import GROQ_API_KEY
+# import os
+
+# st.set_page_config(page_title="Docex: Fast AI Document Brain")
+# st.title("📚 Docex — Fast RAG Builder")
+
+# uploaded_files = st.file_uploader("Upload documents", accept_multiple_files=True)
+# if uploaded_files:
+#     # save uploaded to temp files
+#     file_paths = [save_temp(f) for f in uploaded_files]
+
+#     # UI placeholders for per-file status
+#     file_status_boxes = {os.path.basename(p): st.empty() for p in file_paths}
+#     overall_progress = st.progress(0)
+#     log_box = st.empty()
+
+#     # Define callback for progress updates coming from rag_utils.process_files
+#     def progress_cb(info):
+#         # info may be per-file or overall
+#         if info.get("file"):
+#             fname = info["file"]
+#             status = info["status"]
+#             if status == "started":
+#                 file_status_boxes[fname].info(f"⏳ {fname}: extracting...")
+#             elif status == "done":
+#                 file_status_boxes[fname].success(f"✅ {fname}: done — {info.get('chunks',0)} chunks in {round(info.get('elapsed',0),2)}s")
+#             elif status == "failed":
+#                 file_status_boxes[fname].error(f"❌ {fname}: failed: {info.get('error')}")
+#         else:
+#             # overall progress
+#             if info.get("status") == "progress":
+#                 overall_progress.progress(int(info.get("percent", 0)))
+#                 log_box.text(f"Processed {info.get('completed')}/{info.get('total')} files")
+
+#     # Run parallel extraction
+#     st.info("Starting extraction (parallel)...")
+#     chunks, logs = process_files(file_paths, max_workers=4, progress_callback=progress_cb)
+
+#     st.success(f"Extraction complete — {logs['_summary']['total_chunks']} chunks from {logs['_summary']['files']} files.")
+    
+
+#     # Optionally save logs
+#     save_path = save_benchmark_logs(logs, out_path="docex_benchmarks.json")
+#     if save_path:
+#         st.write(f"Saved benchmark logs to `{save_path}`")
+
+#     # Build vector DB (show simple timing)
+#     if st.button("Build Vector DB"):
+#         vs, vb_logs = build_vector_db(chunks)
+#         st.write("Vector DB built")
+#         st.json(vb_logs)
+#         st.session_state["retriever"] = vs.as_retriever()
+
+# # RAG chat (same as before)
+# if st.session_state.get("retriever"):
+#     query = st.text_area("Ask anything:", "Give me a summary of uploaded docs")
+#     if st.button("Run RAG Query"):
+#         rag = build_rag_chain(st.session_state["retriever"], GROQ_API_KEY)
+#         with st.spinner("Thinking..."):
+#             answer = rag.invoke({"input": query})
+#         st.write("### Answer")
+#         st.write(answer["answer"])
+
+
+# app.py
 import streamlit as st
-from dotenv import load_dotenv
+from rag_utils import save_temp, process_files, build_vector_db, build_rag_chain, save_benchmark_logs
+from settings import GROQ_API_KEY
+import os
 
-load_dotenv()
+st.set_page_config(page_title="Docex: Fast AI Document Brain")
+st.title("📚 Docex — Fast RAG Builder")
 
-# Loaders & vector tools
-from langchain_community.document_loaders import UnstructuredFileLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+# Initialize session state flags
+if "chunks_created" not in st.session_state:
+    st.session_state["chunks_created"] = False
+if "chunks" not in st.session_state:
+    st.session_state["chunks"] = []
+if "logs" not in st.session_state:
+    st.session_state["logs"] = {}
+if "retriever" not in st.session_state:
+    st.session_state["retriever"] = None
 
-# LLM
-from langchain_groq import ChatGroq
+uploaded_files = st.file_uploader("Upload documents", accept_multiple_files=True)
 
-# Chains
-from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_classic.chains.retrieval import create_retrieval_chain
-
-
-# ---------------------------
-# UI SETUP
-# ---------------------------
-st.set_page_config(page_title="Docex: Multi-File Document Explorer")
-st.title("📚 Docex — Multi-File Document Explorer & Summarizer")
-st.write("Upload **multiple documents** and summarize or chat with them using RAG.")
-
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-
-
-# ---------------------------
-# FILE UPLOAD
-# ---------------------------
-uploaded_files = st.file_uploader(
-    "Upload one or more documents",
-    type=[
-        "pdf", "docx", "txt", "pptx",
-        "png", "jpg", "jpeg",
-        "csv", "md", "html", "epub", "json"
-    ],
-    accept_multiple_files=True
-)
-
-
-def save_temp(uploaded):
-    """Save uploaded file to a temp file & return its path"""
-    ext = os.path.splitext(uploaded.name)[1]
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-    tmp.write(uploaded.getbuffer())
-    return tmp.name
-
-
-def load_and_split(file_path, chunk_size=1200, chunk_overlap=200):
-    """Load ANY document type using Unstructured"""
-    loader = UnstructuredFileLoader(file_path)  # handles ALL types automatically
-    docs = loader.load()
-
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-    )
-    return text_splitter.split_documents(docs)
-
-
-def create_vectorstore(chunks):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-    return FAISS.from_documents(chunks, embeddings)
-
-
-# ---------------------------
-# PROCESS MULTIPLE FILES
-# ---------------------------
 if uploaded_files:
-    st.info("Processing documents...")
+    # Save uploaded files to temp paths
+    file_paths = [save_temp(f) for f in uploaded_files]
 
-    all_chunks = []
-    for uploaded in uploaded_files:
-        st.write(f"📄 Processing: **{uploaded.name}**")
+    # UI placeholders
+    file_status_boxes = {os.path.basename(p): st.empty() for p in file_paths}
+    overall_progress = st.progress(0)
+    log_box = st.empty()
 
-        try:
-            path = save_temp(uploaded)
-            chunks = load_and_split(path)
+    def progress_cb(info):
+        """Update per-file and overall progress in Streamlit."""
+        if info.get("file"):
+            fname = info["file"]
+            status = info["status"]
+            if status == "started":
+                file_status_boxes[fname].info(f"⏳ {fname}: extracting...")
+            elif status == "done":
+                file_status_boxes[fname].success(
+                    f"✅ {fname}: done — {info.get('chunks',0)} chunks in {round(info.get('elapsed',0),2)}s"
+                )
+            elif status == "failed":
+                file_status_boxes[fname].error(f"❌ {fname}: failed: {info.get('error')}")
+        else:
+            # Overall progress
+            if info.get("status") == "progress":
+                overall_progress.progress(int(info.get("percent", 0)))
+                log_box.text(f"Processed {info.get('completed')}/{info.get('total')} files")
 
-            st.success(f"✔ {uploaded.name} → {len(chunks)} chunks")
-            all_chunks.extend(chunks)
+    # Only run extraction if chunks are not already created in this session
+    if not st.session_state["chunks_created"]:
+        st.info("Starting extraction (parallel)...")
+        chunks, logs = process_files(
+            file_paths, max_workers=4, progress_callback=progress_cb
+        )
 
-        except Exception as e:
-            st.error(f"Error loading {uploaded.name}: {e}")
+        st.session_state["chunks"] = chunks
+        st.session_state["logs"] = logs
+        st.session_state["chunks_created"] = True
 
-    st.success(f"🎉 Total Chunks from all files: {len(all_chunks)}")
+        # Display extraction summary
+        st.success(
+            f"Extraction complete — {logs['_summary']['total_chunks']} chunks from {logs['_summary']['files']} files."
+        )
 
-    # Create vectorstore for all files
-    vectorstore = create_vectorstore(all_chunks)
-    retriever = vectorstore.as_retriever()
+        # Save benchmark logs
+        save_path = save_benchmark_logs(logs, out_path="docex_benchmarks.json")
+        if save_path:
+            st.write(f"Saved benchmark logs to `{save_path}`")
+    else:
+        st.info(
+            f"✅ Extraction already done — {st.session_state['logs']['_summary']['total_chunks']} chunks from {st.session_state['logs']['_summary']['files']} files."
+        )
 
-    # Prompt template
-    prompt = ChatPromptTemplate.from_template("""
-You are an expert academic summarizer and question-answering assistant.
+    # Build vector DB
+    if st.button("Build Vector DB"):
+        vs, vb_logs = build_vector_db(st.session_state["chunks"])
+        st.write("Vector DB built")
+        st.json(vb_logs)
+        st.session_state["retriever"] = vs.as_retriever()
 
-You MUST follow these rules:
-1. Only use the information strictly provided in the context.
-2. If the answer cannot be found in the context, say: 
-   “The context does not contain this information.”
-3. Do NOT add external knowledge.
-4. Keep your answers clear, precise, and technically accurate.
-5. When summarizing: focus on key ideas, definitions, and core explanations.
-6. When answering questions: cite the exact parts of the context you rely on.
-
------------------------
-Context:
-{context}
------------------------
-
-Instruction:
-{input}
-
-Your Response:
-""")
-
-    llm = ChatGroq(
-        api_key=GROQ_API_KEY,
-        model="llama-3.1-8b-instant",
-        temperature=0.1
-    )
-
-    combine_chain = create_stuff_documents_chain(llm=llm, prompt=prompt)
-    rag_chain = create_retrieval_chain(retriever=retriever, combine_docs_chain=combine_chain)
-
-    st.subheader("Ask anything about the uploaded documents:")
-    query = st.text_area(
-        "Enter your question",
-        "Give me a combined summary of all documents."
-    )
-
-    if st.button("Generate Response"):
+# RAG Chat
+if st.session_state.get("retriever"):
+    query = st.text_area("Ask anything:", "Give me a summary of uploaded docs")
+    if st.button("Run RAG Query"):
+        rag = build_rag_chain(st.session_state["retriever"], GROQ_API_KEY)
         with st.spinner("Thinking..."):
-            response = rag_chain.invoke({"input": query})
-
-        st.success("Done!")
-        st.markdown("### 🧾 Response")
-        st.write(response["answer"])
-
-        with st.expander("📌 Retrieved context"):
-            for i, doc in enumerate(response["context"], 1):
-                st.markdown(f"**Chunk {i}:**")
-                st.write(doc.page_content)
-                st.markdown("---")
-
-else:
-    st.info("⬆ Upload at least one file to begin.")
-
-
-st.caption("Docex — Powered by Groq, LangChain, Google Embeddings")
+            answer = rag.invoke({"input": query})
+        st.write("### Answer")
+        st.write(answer["answer"])
