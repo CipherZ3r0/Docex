@@ -242,13 +242,7 @@ def extract_unstructured(path):
 # MASTER EXTRACTOR (fast + universal)
 # -------------------------
 def fast_extract(path):
-    """
-    Fast extractor that:
-    1) tries specialized extractors for common formats
-    2) falls back to textract for many other types
-    3) falls back to Unstructured as a last resort
-    Returns: extracted text string
-    """
+    
     ext, mime = detect_file_type(path)
 
     # Fast specialized loaders
@@ -300,7 +294,7 @@ def fast_chunk(text, chunk_size=1200, chunk_overlap=200):
 
 # EXTRACT + CHUNK (per file)
 
-def extract_chunks(path, chunk_size=1200, chunk_overlap=200):
+def extract_chunks(path, chunk_size=400, chunk_overlap=60):
     """
     Extract & chunk a single file path. Returns list[str].
     """
@@ -320,25 +314,7 @@ def process_files(
     chunk_overlap=200,
     progress_callback=None,
 ):
-    """
-    Process a list of local file paths in parallel:
-      - extract
-      - chunk
-
-    progress_callback is optional and called with a dict:
-      {
-        "file": "<path or name>",
-        "status": "started"|"done"|"failed",
-        "percent": float between 0-100,
-        "elapsed": seconds for the file (float),
-        "chunks": int (if done),
-        "error": "<error str>" (if failed)
-      }
-
-    Returns:
-      combined_chunks: list of chunk strings (all files)
-      logs: dict of per-file logs & summary with timings
-    """
+    
     logs = {}
     combined_chunks = []
 
@@ -396,7 +372,10 @@ def build_vector_db(chunks, embed_model="sentence-transformers/all-MiniLM-L6-v2"
     Returns the FAISS vectorstore and timing/log info.
     """
     t0 = time.time()
-    embedder = HuggingFaceEmbeddings(model_name=embed_model)
+    embedder = HuggingFaceEmbeddings(
+        model_name=embed_model,
+        encode_kwargs={"normalize_embeddings": True}
+    )
 
     # wrap as LangChain Documents expected by FAISS
     docs = [LCDocument(page_content=c) for c in chunks]
@@ -456,4 +435,3 @@ def save_benchmark_logs(logs, out_path="docex_benchmarks.json"):
     except Exception as e:
         logger.error(f"Failed to save benchmark logs: {e}")
         return None
-
